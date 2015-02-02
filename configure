@@ -1,0 +1,113 @@
+#!/bin/bash
+
+set -ueo pipefail
+
+# ### Default values
+
+binName='wms'
+prefix='/usr/local'
+binDir="${prefix}/bin"
+libDir="${prefix}/lib/wms"
+whichBash='/bin/bash'
+whichSed='/bin/sed'
+whichAwk='/usr/bin/awk'
+
+# ### Adjust to previous user settings
+
+# TODO include some file
+
+# ### Functions
+displayHelp() {
+cat <<ASDF
+    --binName=${binName}
+    --prefix=${prefix}
+    --binDir=\${prefix}/bin
+    --libDir=\${prefix}/lib/\${binName}
+    --whichBash=${whichBash}
+    --whichSed=${whichSed}
+    --whichAwk=${whichAwk}
+ASDF
+}
+
+# ### Processing CLI parameters
+while (( $# ))
+do
+    case "$1" in
+        --*=* )
+            key="$(echo "$1" | sed -ne 's_--\([^\=]\+\)\=.*$_\1_p')"
+            value="$(echo "$1" | sed -ne 's_--[^\=]\+\=__p')"
+            eval "${key}=\"${value}\""
+            case "${key}" in
+                prefix )
+                    binDir="${prefix}/bin"
+                    libDir="${prefix}/lib/wms"
+                    ;;
+            esac
+            ;;
+        *|-h|--help )
+            displayHelp
+            exit
+            ;;
+    esac
+    shift
+done
+
+bb=build/bin
+bl=build/lib/wms
+bt=build/tmp
+
+echo "Writing Makefile..."
+cat > Makefile <<MAKEFILE
+
+.PHONY: all dirs install clean
+
+all: dirs $bb/wms $bl/get-shebang-interpreter $bl/sh2md $bl/sh2gfm
+
+dirs:
+	mkdir -p $bb $bl $bt
+
+$bb/wms: $bt/bash-shebang $bt/wms-settings src/functions/* src/wms.bash
+	cat \$^ > "\$@"
+
+$bt/wms-settings:
+	> "\$@"
+	echo "export binDir='$binDir'" >> "\$@"
+	echo "export libDir='$libDir'" >> "\$@"
+
+$bl/get-shebang-interpreter: $bt/sed-shebang src/lib/get-shebang-interpreter.sed
+	cat \$^ > "\$@"
+
+$bl/sh2md: $bt/awk-shebang src/lib/sh2md.awk
+	cat \$^ > "\$@"
+
+$bl/sh2gfm: $bt/awk-shebang src/lib/sh2gfm.awk
+	cat \$^ > "\$@"
+
+$bt/awk-shebang:
+	echo "#!${whichAwk} -f" > "\$@"
+
+$bt/bash-shebang:
+	echo "#!${whichBash}" > "\$@"
+
+$bt/sed-shebang:
+	echo "#!${whichSed} -nf" > "\$@"
+
+install: all
+	mkdir -p "${binDir}"
+	cp $bb/wms "${binDir}/${binName}"
+	mkdir -p "${libDir}"
+	cp $bl/* "${libDir}"
+	chmod 755 "${binDir}/${binName}" ${libDir}/*
+
+uninstall:
+	rm "${binDir}/${binName}"
+	rm ${libDir}/*
+	rmdir "${libDir}"
+
+clean:
+	rm -rf build
+
+MAKEFILE
+echo -e "\tdone"
+echo
+echo "You can now run \`make && sudo make install\`"
